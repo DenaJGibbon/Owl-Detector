@@ -67,3 +67,5 @@ DetectAndClassify.df <- DetectAndClassify(input=input.dir,
 end_time <- Sys.time()
 print(end_time - start_time)
 
+
+plotSoundevents(input.dir='/Users/denasmacbook/Owl-Detector/test/GMM')
