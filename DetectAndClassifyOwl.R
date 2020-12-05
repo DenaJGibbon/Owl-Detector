@@ -1,0 +1,338 @@
+#' Function to train ML algorithm, do detection and classification on multiple sound files
+#' @param input Either full path to directory containing .wav files or a list with file name as first element and .wav as second element
+#' @param feature.df Dataframe of features from labeled sound files; first column must be class labels
+#' @param model.type Choice of 'NNET', 'SVM', or 'GMM'
+#' @param tune Logical; if want to use 'tune' function for SVM; NOTE: for large datasets adds significant computing time
+#' @param target.signal Labeled signal of interest from training data (feature.df)
+#' @param which.quant Specifies how to calculate noise values from GMM
+#' @param wav.name Can be either full file path to .wav file location or R .wav object
+#' @param min.freq Minimum frequency (Hz) of signal of interest
+#' @param max.freq Maximum frequency (Hz) of signal of interest
+#' @param n.windows Number of time windows to calculate for MFCCs
+#' @param num.cep Number of cepstra coefficients to calculate for MFCCs
+#' @param pattern.split Pattern to find and remove to create file name; currently set to ".rda"
+#' @param min.sound.event.dur Minimum time (in seconds) for sound events to be considered
+#' @param output Either 'spectro', 'table' or 'wav'
+#' @param probability.thresh Probability threshold (provided by machine learning algorithm) to be considered as target signal
+#' @param wav.out Logical; if "TRUE" then writes each sound event as a wave file to directory
+#' @param output.dir Specified output directory; set to current working directory
+#' @export
+#' @import e1071
+#' @import mclust
+#' @import tuneR
+#' @import seewave
+#' @import tuneR
+#' @import stringr
+#' @examples caret
+#'
+
+DetectAndClassify <- function(input, feature.df,model.type.list=c("GMM"), tune = FALSE,audio.detect='FALSE',audio.moth='FALSE',
+                              target.signal = "female.gibbon",channel=1,
+                              sound.file.index=1,
+                              min.freq = 400, max.freq = 2000,
+                              noise.quantile.val=0.5,
+                              n.windows = 9, num.cep = 12,
+                              pattern.split = ".wav", min.signal.dur = 4,
+                              spectrogram.window=2400,
+                              max.sound.event.dur = 12, output = "wav",
+                              probability.thresh = 0.75,
+                              wav.output = "TRUE", output.dir = getwd(),
+                              swift.time=TRUE,time.start=6,time.stop=12,
+                              write.csv.output=TRUE,verbose=TRUE,
+                              random.sample=100) {
+  
+  if (is.element(target.signal, unique(feature.df$class)) == FALSE) {
+    stop("Training data does not contain target signal")
+  }
+  
+  if ((wav.output == "TRUE" & output.dir == ""))
+    stop("Specify output directory")
+  
+  print("Machine learning in progress...")
+  
+  if ( "SVM" %in% model.type.list== TRUE ) {
+    print("SVM in progress...")
+    start_time <- Sys.time()
+    if (tune == TRUE) {
+      ## SVM classification
+      
+      tune.rad <- e1071::tune(svm, feature.df[, 2:ncol(feature.df)], feature.df$class, kernel = "radial", tunecontrol = tune.control(cross = 5), ranges = list(cost = c(0.001, 0.01, 0.1, 1, 2,
+                                                                                                                                                                        10, 100, 1000), gamma = c(0.01, 0.1, 0.5, 1, 2)))
+      
+      
+      ml.model.svm <- e1071::svm(feature.df[, 2:ncol(feature.df)], feature.df$class, kernel = "radial", gamma = tune.rad$best.parameters$gamma, cost = tune.rad$best.parameters$cost, cross = 5,
+                                 probability = TRUE)
+      
+    } else {
+      ml.model.svm <-  e1071::svm(feature.df[, 2:ncol(feature.df)], feature.df$class, kernel = "radial", gamma = 0.01, cost = 2, cross = 5, probability = TRUE)
+    }
+    print(ml.model.svm$tot.accuracy)
+    end_time <- Sys.time()
+    print(end_time - start_time)
+  }
+  
+  if ("GMM" %in% model.type.list== TRUE ) {
+    print("GMM in progress...")
+    start_time <- Sys.time()
+    tryCatch({
+      ml.model.gmm <-
+        mclust::MclustDA(feature.df[, 2:ncol(feature.df)], class = feature.df$class, modelType = "EDDA",
+                         verbose = F)
+    }, error = function(e) {
+      cat("ERROR :", conditionMessage(e), "\n")
+    })
+    
+    if ((length(ml.model.gmm) == 0))
+      stop("GMM could not be trained! Try with SVM or NNET.")
+    end_time <- Sys.time()
+    print(end_time - start_time)
+  }
+  
+  
+  contains.wav <- str_detect(input, '.wav')
+  
+  if (contains.wav == "FALSE") {
+    list.file.input <- list.files(input, full.names = TRUE, recursive = T, pattern = 'wav')
+    list.file.input.short <- list.files(input, full.names = FALSE, recursive = T,pattern = 'wav')
+  } else {
+    list.file.input <- input
+  }
+  
+  if(swift.time==TRUE){
+    number.of.slash <- str_count(list.file.input, pattern = "/")[1]
+    base.file.name.all <- str_split_fixed(list.file.input, pattern = "/",n=(number.of.slash+1))[,number.of.slash+1]
+    temp.name.all <- stringr::str_split_fixed(base.file.name.all, pattern = pattern.split, n = 2)[,1]
+    times <- str_split_fixed(temp.name.all,pattern = '_',n=3)[,3]
+    times <- as.numeric(substr(times,start=1,stop = 2))
+    list.file.input <- list.file.input[which(times > time.start & times < time.stop)]
+  }
+  
+  if (length(list.file.input) == 0 ) {
+    print("No sound files detected")
+    break
+  }
+  
+  if(is.numeric(random.sample) == TRUE){
+    
+    list.file.input <-   list.file.input[sample(1:length(list.file.input),random.sample, replace=F)]
+  }
+  
+  
+  for( i in sound.file.index:length(list.file.input)){ tryCatch({
+    timing.df <- data.frame()
+    model.results.list <- list()
+    
+    contains.slash <- str_detect(list.file.input[i], pattern = "/")
+    
+    if(contains.slash=='TRUE'){
+      number.of.slash <- str_count(list.file.input[i], pattern = "/")
+      base.file.name <- str_split_fixed(list.file.input[i], pattern = "/",n=(number.of.slash+1))[,number.of.slash+1]
+      temp.name <- stringr::str_split_fixed(base.file.name, pattern = pattern.split, n = 2)[1]
+    } else{
+      temp.name <- stringr::str_split_fixed(list.file.input[i], pattern = pattern.split, n = 2)[1]
+      
+    }
+    
+    if(audio.moth=='TRUE'){
+      recorder <- str_split_fixed(list.file.input[i], pattern = "/",n=(number.of.slash+1))[,number.of.slash-1]
+      date <- str_split_fixed(list.file.input[i], pattern = "/",n=(number.of.slash+1))[,number.of.slash]
+      temp.name <- str_split_fixed(temp.name, pattern = '_',n=2)[,1]
+      temp.name <- paste(recorder,date,temp.name,sep='_')
+    }
+    
+    # Convert .wav file to spectrogram
+    start_time <- Sys.time()
+    if(verbose==TRUE){
+      print(paste("Computing spectrogram for file",temp.name, i, 'out of', length(list.file.input)))
+    }
+    
+    temp.wav <- readWave(list.file.input[i])
+    
+    sound_length <- round(length(temp.wav@left) / temp.wav@samp.rate, 2)
+    cutwave.list <- c(seq(from=1,to= (sound_length),by=300),sound_length)
+    
+    short.sound.files <- lapply(1: (length(cutwave.list)-1),
+                                function(i) extractWave(temp.wav,
+                                                        from=cutwave.list[i],
+                                                        to=cutwave.list[i+1],
+                                                        xunit = c("time"),plot=F,output="Wave"))
+    
+    model.results.list <- list()
+    for(j in 1: length(short.sound.files)){
+      # swift.spectro <- specgram(x=short.sound.files[[j]]@left, n=1600,
+      #                           Fs=short.sound.files[[j]]@samp.rate, overlap = 0)
+      #
+      swift.spectro <-spectro(short.sound.files[[j]],wl=spectrogram.window,overlap=0,plot=F,channel=channel)
+      
+      
+      
+      # Identify the frequency band of interest
+      min.freq.cols <- which.min(abs(round(swift.spectro$freq, digits = 2) - (min.freq/1000)))
+      max.freq.cols <- which.min(abs(round(swift.spectro$freq, digits = 2) - (max.freq/1000)))
+      
+      
+      # Calculate the column sums for each time window
+      col.sum <- colSums(swift.spectro$amp[min.freq.cols:max.freq.cols, ])
+      
+      
+      # Calculate noise value
+      noise.value <- quantile(unlist(col.sum), c(noise.quantile.val))
+      
+      # Determine which values are above specified cutoff
+      list.sub <- which(col.sum > noise.value)
+      call.timing <- split(list.sub, cumsum(c(1, diff(list.sub)) != 1))
+      
+      # Calculate minimum number of consecutive values above threshold to be considered signal
+      number.time.windows.1sec <- min(which(swift.spectro$time > 1))
+      signal.dur <- number.time.windows.1sec * min.signal.dur
+      
+      # Combine all potential sound events into a list
+      call.timing.list <- as.list(call.timing[which(sapply(call.timing, length) > signal.dur)])
+      
+      # If user indicated maximum duration create list of sound events under certain duration
+      if(max.sound.event.dur != 'NULL'){
+        sound.event.index.max <- which.min(abs(swift.spectro$time - max.sound.event.dur))
+        call.timing.list <- call.timing.list[which(sapply(call.timing.list, length) < sound.event.index.max)]
+      }
+      
+      if (length(call.timing.list) >= 1) {
+        subsamps <- lapply(1:length(call.timing.list),
+                           function(i) extractWave(short.sound.files[[j]],
+                                                   from=swift.spectro$time[min(call.timing.list[[i]])],
+                                                   to=swift.spectro$time[max(call.timing.list[[i]])], xunit = c("time"),plot=F,output="Wave"))
+        mfcc.list <- list()
+        #mfcc.list <- foreach(x=1:length(subsamps)) %dopar% {
+        for(x in 1:length(subsamps)){
+           if(verbose==TRUE){
+             print(paste("Processing", x, 'out of',length(subsamps), 'for', j,'out of',length(short.sound.files),'sound files'  ))
+           }
+
+          short.wav <- subsamps[[x]]
+          
+          if(channel==2){
+          short.wav@left <- short.wav@right
+          }
+          wav.dur <- duration(short.wav)
+          win.time <- wav.dur/n.windows
+          
+          # Calculate MFCCs
+          melfcc.output <- tuneR::melfcc(short.wav, minfreq = min.freq,
+                                         hoptime = win.time, maxfreq = max.freq,
+                                         numcep = num.cep, wintime = win.time)
+          
+          # Calculate delta cepstral coefficients
+          deltas.output <- deltas(melfcc.output)
+          
+          # Ensure only same number of time windows are used for MFCC and delta coefficients Also append .wav duration
+          mfcc.vector <- c(as.vector(t(melfcc.output[1:(n.windows - 1), 2:num.cep])), as.vector(t(deltas.output[1:(n.windows - 1), 2:num.cep])), wav.dur)
+          
+          
+          mfcc.vector <- as.data.frame(t(mfcc.vector))
+          if( length(colnames(mfcc.vector)) != length(colnames(feature.df[, 2:ncol(feature.df)])) ){
+            print('Training dataset columns do not match test dataset')
+            break
+          }
+          
+          colnames(mfcc.vector) <- colnames(feature.df[, 2:ncol(feature.df)])
+          mfcc.list[[x]] <-mfcc.vector
+        }
+        
+        temp.model.results.list <- list()
+        for(y in 1:length(mfcc.list)) {
+          
+          if(verbose==TRUE){
+             print(paste("Classifying", y, 'out of',length(mfcc.list)))
+           }
+          
+          mfcc.vector <- mfcc.list[[y]]
+          
+          if ("SVM" %in% model.type.list== TRUE) {
+            svm.prob <- predict(ml.model.svm, mfcc.vector, probability = T)
+            svm.prediction <- predict(ml.model.svm, mfcc.vector)
+            #print(droplevels(svm.prediction))
+            model.output <- attr(svm.prob, "probabilities")
+            signal.loc <- which(attr(model.output, "dimnames")[[2]] == target.signal)
+            signal.probability <- model.output[signal.loc]
+            temp.svm.df <- cbind.data.frame(target.signal, signal.probability)
+            
+            if (temp.svm.df$signal.probability >= probability.thresh) {
+              if (wav.output == "TRUE") {
+                
+                if(audio.detect=='TRUE') {
+                        system('say Detection')}
+                
+                tuneR::writeWave(subsamps[[y]], filename = paste(output.dir, "/",'SVM', '/', temp.name, "_", target.signal, "_", "SVM", "_", round((swift.spectro$time[min(call.timing.list[[y]])]+cutwave.list[j]),3),
+                                                                 "_", round((swift.spectro$time[max(call.timing.list[[y]])]+cutwave.list[j]),3), "_", round(signal.probability,3),  ".wav", sep = ""), extensible = F)
+              }
+              #
+              temp.df <- cbind.data.frame(temp.name, paste(j,y,sep='.'), "SVM",target.signal,
+                                          round(signal.probability,3), round((swift.spectro$time[min(call.timing.list[[y]])]+cutwave.list[j]),3), round((swift.spectro$time[max(call.timing.list[[y]])]+cutwave.list[j]),3))
+              colnames(temp.df) <- c("file.name", "detect.num","model.type", "signal", "probability", "start.time", "end.time")
+              temp.model.results.list[[y]] <- temp.df
+            }
+            
+          }
+          
+          if ("GMM" %in% model.type.list== TRUE) {
+            gmm.mod.predict <- predict(ml.model.gmm, mfcc.vector)
+            # print((gmm.mod.predict$classification))
+            model.output <- gmm.mod.predict$z
+            signal.loc <- which(attr(model.output, "dimnames")[[2]] == target.signal)
+            signal.probability <- model.output[signal.loc]
+            temp.gmm.df <- cbind.data.frame(target.signal, signal.probability)
+            
+            
+            if (temp.gmm.df$signal.probability >= probability.thresh) {
+              if (wav.output == "TRUE") {
+                tuneR::writeWave(subsamps[[y]], filename = paste(output.dir, "/", 'GMM', '/', temp.name, "_", target.signal, "_", "gmm", "_", round((swift.spectro$time[min(call.timing.list[[y]])]+cutwave.list[j]),3),
+                                                                 "_", round((swift.spectro$time[max(call.timing.list[[y]])]+cutwave.list[j]),3), "_", round(signal.probability,3),  ".wav", sep = ""), extensible = F)
+              }
+              #
+              temp.df <- cbind.data.frame(temp.name, paste(j,y,sep='.'), "gmm",target.signal,
+                                          round(signal.probability,3), round((swift.spectro$time[min(call.timing.list[[y]])]+cutwave.list[j]),3), round((swift.spectro$time[max(call.timing.list[[y]])]+cutwave.list[j]),3))
+              colnames(temp.df) <- c("file.name", "detect.num","model.type", "signal", "probability", "start.time", "end.time")
+              temp.model.results.list[[y]] <- temp.df
+            }
+            
+          }
+          
+          
+          
+          
+          
+          
+          
+        }
+        
+        temp.model.results.list <- temp.model.results.list[lengths(temp.model.results.list) != 0]
+        model.results.list[[j]] <-  do.call(rbind.data.frame, temp.model.results.list)
+        
+      }
+    }
+    
+    model.results.list <- model.results.list[lengths(model.results.list) != 0]
+    
+    ml.results.df <-  do.call(rbind.data.frame, model.results.list)
+    
+    timing.df <- rbind.data.frame(timing.df,ml.results.df)
+    
+    if(write.csv.output==TRUE){
+      csv.file.name <- paste(output.dir, '/', temp.name,'_timing.df.csv',sep='')
+      write.csv(timing.df,csv.file.name,row.names = F)
+      print(timing.df)
+    }
+    
+    rm(timing.df)
+    rm(swift.spectro)
+    rm(subsamps)
+    rm(temp.wav)
+    rm(short.sound.files)
+    end_time <- Sys.time()
+    print(end_time - start_time)
+  
+  }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+  }
+}
+
+
+
