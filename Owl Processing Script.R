@@ -48,7 +48,6 @@ input.dir <-'/Users/denasmacbook/Box/Dena/gibbonRconsulting/Sola Angorra owls/Te
 output.dir <- '/Users/denasmacbook/Owl-Detector/test/'
 
 # Run algorithm for batch processing
-# Stopped at i = 816 on May 27
 DetectAndClassify.df <- DetectAndClassify(input=input.dir,
                                           audio.moth='FALSE',audio.detect='FALSE',
                                           min.freq = 500, max.freq = 1000,

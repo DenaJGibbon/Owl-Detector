@@ -98,9 +98,13 @@ DetectAndClassify <- function(input, feature.df,model.type.list=c("GMM"), tune =
     list.file.input <- input
   }
   
+  platform.info <- .Platform
+  file.sep <- platform.info$file.sep
+  
   if(swift.time==TRUE){
-    number.of.slash <- str_count(list.file.input, pattern = "/")[1]
-    base.file.name.all <- str_split_fixed(list.file.input, pattern = "/",n=(number.of.slash+1))[,number.of.slash+1]
+
+    number.of.slash <- str_count(list.file.input, pattern =file.sep)[1]
+    base.file.name.all <- str_split_fixed(list.file.input, pattern =file.sep,n=(number.of.slash+1))[,number.of.slash+1]
     temp.name.all <- stringr::str_split_fixed(base.file.name.all, pattern = pattern.split, n = 2)[,1]
     times <- str_split_fixed(temp.name.all,pattern = '_',n=3)[,3]
     times <- as.numeric(substr(times,start=1,stop = 2))
@@ -122,11 +126,11 @@ DetectAndClassify <- function(input, feature.df,model.type.list=c("GMM"), tune =
     timing.df <- data.frame()
     model.results.list <- list()
     
-    contains.slash <- str_detect(list.file.input[i], pattern = "/")
+    contains.slash <- str_detect(list.file.input[i], pattern =file.sep)
     
     if(contains.slash=='TRUE'){
-      number.of.slash <- str_count(list.file.input[i], pattern = "/")
-      base.file.name <- str_split_fixed(list.file.input[i], pattern = "/",n=(number.of.slash+1))[,number.of.slash+1]
+      number.of.slash <- str_count(list.file.input[i], pattern =file.sep)
+      base.file.name <- str_split_fixed(list.file.input[i], pattern =file.sep,n=(number.of.slash+1))[,number.of.slash+1]
       temp.name <- stringr::str_split_fixed(base.file.name, pattern = pattern.split, n = 2)[1]
     } else{
       temp.name <- stringr::str_split_fixed(list.file.input[i], pattern = pattern.split, n = 2)[1]
@@ -134,8 +138,8 @@ DetectAndClassify <- function(input, feature.df,model.type.list=c("GMM"), tune =
     }
     
     if(audio.moth=='TRUE'){
-      recorder <- str_split_fixed(list.file.input[i], pattern = "/",n=(number.of.slash+1))[,number.of.slash-1]
-      date <- str_split_fixed(list.file.input[i], pattern = "/",n=(number.of.slash+1))[,number.of.slash]
+      recorder <- str_split_fixed(list.file.input[i], pattern =file.sep,n=(number.of.slash+1))[,number.of.slash-1]
+      date <- str_split_fixed(list.file.input[i], pattern =file.sep,n=(number.of.slash+1))[,number.of.slash]
       temp.name <- str_split_fixed(temp.name, pattern = '_',n=2)[,1]
       temp.name <- paste(recorder,date,temp.name,sep='_')
     }
