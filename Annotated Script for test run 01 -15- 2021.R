@@ -1,4 +1,4 @@
-# This is the script for a trial run of the owl detector code for Jordia Sola
+# This is the script for a trial run of the owl detector code for Jordi Sola
 # V1 Jan 15 2021
 
 
@@ -50,6 +50,7 @@ DetectAndClassify.df <- DetectAndClassify(input=input.dir,
                                           random.sample='NA',swift.time=FALSE,
                                           write.csv.output=FALSE
 )
+
 
 # Script to create spectrograms for verification
 source('plotSoundevents.R')
