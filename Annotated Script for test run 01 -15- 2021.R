@@ -55,4 +55,7 @@ DetectAndClassify.df <- DetectAndClassify(input=input.dir,
 source('plotSoundevents.R')
 
 # Code to create spectrograms from owl detections
-plotSoundevents(input.dir='/Users/denasmacbook/Owl-Detector/test/GMM')
+pdf('owldetections.pdf') # This line indicates where the pdf of detections will be saved
+plotSoundevents(input.dir='/Users/denasmacbook/Owl-Detector/test/GMM',
+                nrow=2,ncol=1) # This line indicates the location of the sound files detected above
+graphics.off()

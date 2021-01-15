@@ -40,7 +40,7 @@ plotSoundevents <- function(input.dir, nrow = 3, ncol = 2, from = 1, n.soundeven
     Sdb[which(Sdb < (-1 * dynamicrange))] = -1 * dynamicrange
 
     # png(filename = paste('CodaSpectrograms/',group,'_',temp.wav.updated, c,'coda.png'), width=1000)
-    image(t(Sdb),col=zcolors, axes = FALSE,useRaster = TRUE,main = paste(class.label, a))
+    image(t(Sdb),col=zcolors, axes = FALSE,useRaster = TRUE,main =strwrap(paste(class.label, a),width = 15))
     
     sound.event <- paste(class.label, a)
     temp.df <- cbind.data.frame(sound.event, list.wav.files.short[a])
