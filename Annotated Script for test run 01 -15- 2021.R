@@ -20,7 +20,7 @@ source('DetectAndClassifyOwl.R')
 # Set the location of the sound files
 # NOTE: since you are using a PC you might need to change the '/' to '\'
 input.dir <-'/Users/denasmacbook/Box/Dena/gibbonRconsulting/Sola Angorra owls/TestSoundFiles'
-input.dir <-'/Users/denasmacbook/Downloads/refilesfordatabase'
+
 # This should include a list of the sound files of interest. If it does not you will need to fix the file path name above!
 list.files(input.dir)
 
